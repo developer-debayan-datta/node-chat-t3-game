@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>node-chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <style type="text/css">
+    body {
+        font-family: "Arial", sans-serif;
+    }
+
+    #my-chat-msg {
+        height: 500px;
+        overflow-y: scroll;
+    }
+
+    #game-t3 {
+        text-align: center;
+    }
+
+    .game--container {
+        display: grid;
+        grid-template-columns: repeat(3, auto);
+        width: 306px;
+        margin: 50px auto;
+    }
+
+    .cell {
+        font-family: "Permanent Marker", cursive;
+        width: 100px;
+        height: 100px;
+        box-shadow: 0 0 0 1px #333333;
+        border: 1px solid #333333;
+        cursor: pointer;
+        box-sizing: content-box;
+        line-height: 100px;
+        font-size: 60px;
+    }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="h1 text-center">chat-N-game</div>
+        <div class="d-grid gap-2">
+            <input id="inp-name" type="text" class="form-control" placeholder="pls enter your name" aria-label="type" aria-describedby="basic-addon1">
+            <button id="btn-join-room" class="btn btn-primary" type="button">Join Room</button>
+            <!-- <button class="btn btn-primary" type="button">Join Room</button> -->
+        </div>
+        <div id="content-logged-in" class="d-none">
+            <ul class="nav nav-pills nav-fill" id="myTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab" aria-controls="chat" aria-selected="true">Chat</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="game-tab" data-bs-toggle="tab" data-bs-target="#game" type="button" role="tab" aria-controls="game" aria-selected="false">Game</button>
+                </li>
+            </ul>
+            <hr />
+            <div class="tab-content">
+                <div class="tab-pane" id="chat" role="tabpanel" aria-labelledby="chat-tab">
+                    <div id="my-chat-msg"></div>
+                    <div id="my-chat-box-cont" class="input-group fixed-bottom">
+                        <span class="input-group-text">chat</span>
+                        <input id="my-chat-box" type="text" class="form-control" placeholder="type your msg & hit enter" aria-label="type" aria-describedby="basic-addon1">
+                    </div>
+                </div>
+                <div class="tab-pane fade show active" id="game" role="tabpanel" aria-labelledby="game-tab">
+                    <section id="game-t3" class="d-none">
+                        <h1 class="game--title">Tic Tac Toe</h1>
+                        <div class="game--container">
+                            <div id="gcell-0" data-cell-index="0" class="cell"></div>
+                            <div id="gcell-1" data-cell-index="1" class="cell"></div>
+                            <div id="gcell-2" data-cell-index="2" class="cell"></div>
+                            <div id="gcell-3" data-cell-index="3" class="cell"></div>
+                            <div id="gcell-4" data-cell-index="4" class="cell"></div>
+                            <div id="gcell-5" data-cell-index="5" class="cell"></div>
+                            <div id="gcell-6" data-cell-index="6" class="cell"></div>
+                            <div id="gcell-7" data-cell-index="7" class="cell"></div>
+                            <div id="gcell-8" data-cell-index="8" class="cell"></div>
+                        </div>
+                        <h2 class="game--status"></h2>
+                        <button class="game--restart d-none">Restart Game</button>
+                    </section>
+                    <div id="game-t3-err" class="h1 text-center">2 players must join to play</div>
+                </div>
+            </div>
+        </div>
+        <div class="position-fixed end-0 p-3" style="z-index: 11; bottom: 40px;">
+            <div id="liveToast" class="toast hide" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header">
+                    <strong class="me-auto">Alert</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body"></div>
+            </div>
+        </div>
+    </div>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.26.0/moment.min.js"></script> -->
+<script>
+(function() {
+    // chat app vars //////////////////////////////////////////////////////////////////////////////////////
+    var sId = null,
+        sName = null,
+        socket = io(),
+        myToast = (function(el) {
+            return {
+                show: function(msg) {
+                    el.find(".toast-body").text(msg);
+                    new bootstrap.Toast(el[0]).show();
+                }
+            };
+        })($("#liveToast")),
+        myChat = (function(el) {
+            return {
+                add: function(msg, user) {
+                    let msgHtml = `<div class="card w-75 mt-3 p-3 float-${user == "You" ? "end" : "start"}">
+                                     <h5 class="card-title">${user}</h5>
+                                     <p class="card-text">${msg}</p>
+                                   </div>`;
+                    el.append(msgHtml);
+                }
+            };
+        })($("#my-chat-msg"));
+
+
+    // tic-tac-toe game vars /////////////////////////////////////////////////////////////////////////
+    const statusDisplay = document.querySelector('.game--status');
+
+    var gameActive = true;
+    var currentPlayer = null;
+    var currentMark = null;
+    var gameState = ["", "", "", "", "", "", "", "", ""];
+
+    const winningMessage = () => `Player ${currentPlayer} - ${currentMark} has won!`;
+    const drawMessage = () => `Game ended in a draw!`;
+    const currentPlayerTurn = () => `It's ${sName == currentPlayer ? "Your" : currentPlayer} - ${currentMark}'s turn`;
+
+    const winningConditions = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6]
+    ];
+
+
+
+
+
+    // chat app code ///////////////////////////////////////////////////////////////////////
+
+    $("#btn-join-room").click(function(e) {
+        e.stopPropagation();
+        let userName = $("#inp-name").val();
+        if (userName) {
+            socket.emit("join-room", { userName: userName });
+            $(".d-grid").toggleClass("d-none");
+            $("#content-logged-in").toggleClass("d-none");
+        } else {
+            myToast.show("pls provide a name");
+        }
+    });
+    $("#inp-name").val(window.location.href.split("?")[1].replace("u=", ""));
+
+
+
+
+    $("#my-chat-box").keypress(function(evt) {
+        let key = (evt.keyCode ? evt.keyCode : evt.which);
+        if (key == '13') {
+            let val = $(this).val();
+            console.log(val);
+            if (val) {
+                socket.emit("chat-message", { userName: sName, msg: val });
+                $(this).val("");
+            }
+        }
+    });
+
+
+
+    //receive data from server.
+    socket.on('send-data', (data) => {
+        console.log(data);
+        if (data.id) sID = data.id;
+        if (data.userName) sName = data.userName;
+        if (data.msg) {
+            myToast.show(data.msg);
+        }
+    });
+
+    socket.on("chat-message", (data) => {
+        myChat.add(data.msg, data.userName == sName ? "You" : data.userName);
+    });
+
+    socket.on("game-message", (data) => {
+        if (data.t3Enabled) {
+            // activate game
+            $("#game-t3-err").toggleClass("d-none");
+            $("#game-t3").toggleClass("d-none");
+        }
+        if (data.t3New) {
+            // new game game
+            currentPlayer = data.player;
+            currentMark = data.mark;
+            // prevent current player of it's opponent's turn
+            gameActive = sName == currentPlayer;
+            
+            gameState = ["", "", "", "", "", "", "", "", ""];
+            statusDisplay.innerHTML = currentPlayerTurn();
+            document.querySelectorAll('.cell').forEach(cell => cell.innerHTML = "");
+        }
+        if (data.t3Playing) {
+            handleCellPlayed(data.clickedCellIndex);
+            if(handleResultValidation()){
+                currentPlayer = data.player;
+                currentMark = data.mark;
+                statusDisplay.innerHTML = currentPlayerTurn();
+                // prevent current player of it's opponent's turn
+                gameActive = sName == currentPlayer;
+            }else{
+                // game ended, start a new one
+                $(".game--restart").toggleClass("d-none");
+            }
+        }
+    });
+
+
+
+
+
+
+
+
+
+
+
+    // tic-tac-toe game code /////////////////////////////////////////////////////////////////////////
+    function handleCellPlayed(clickedCellIndex) {
+        gameState[clickedCellIndex] = currentMark;
+        document.getElementById("gcell-" + clickedCellIndex).innerHTML = currentMark;
+        // gameActive = false;
+    }
+
+    function handleResultValidation() {
+        let roundWon = false;
+        for (let i = 0; i <= 7; i++) {
+            const winCondition = winningConditions[i];
+            let a = gameState[winCondition[0]];
+            let b = gameState[winCondition[1]];
+            let c = gameState[winCondition[2]];
+            if (a === '' || b === '' || c === '') {
+                continue;
+            }
+            if (a === b && b === c) {
+                roundWon = true;
+                break
+            }
+        }
+
+        if (roundWon) {
+            statusDisplay.innerHTML = winningMessage();
+            gameActive = false;
+            return false;
+        }
+
+        let roundDraw = !gameState.includes("");
+        if (roundDraw) {
+            statusDisplay.innerHTML = drawMessage();
+            gameActive = false;
+            return false;
+        }
+        return true;
+    }
+
+    function handleCellClick(clickedCellEvent) {
+        const clickedCell = clickedCellEvent.target;
+        const clickedCellIndex = parseInt(clickedCell.getAttribute('data-cell-index'));
+
+        if (gameState[clickedCellIndex] !== "" || !gameActive) {
+            return;
+        }
+
+        socket.emit("game-message", { clickedCellIndex: clickedCellIndex, t3Playing: true });
+    }
+
+    function handleRestartGame() {
+        this.style.display = "none";
+        socket.emit("game-message", { t3New: true });
+    }
+
+    document.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click', handleCellClick));
+    document.querySelector('.game--restart').addEventListener('click', handleRestartGame);
+
+})();
+</script>
+
+</html>
